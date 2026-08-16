@@ -1,267 +1,282 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
-  Trash2,
-  Inbox,
+  Calendar as CalendarIcon,
+  ListFilter,
+  Sparkles,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { getMood } from '@/lib/moods';
-import {
-  fromISODate,
-  monthName,
-  formatDateLong,
-  todayISO,
-} from '@/lib/dates';
-import type { MoodEntry } from '@/lib/types';
+import { monthName, formatDateShort } from '@/lib/dates';
+import type { MoodEntry, MoodId } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { MOODS } from '@/lib/moods';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function HistoryPage() {
-  const { entries, deleteEntry } = useAuth();
+  const { getMonthMoods } = useAuth();
+
+  const [monthMoods, setMonthMoods] = useState<MoodEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [monthCursor, setMonthCursor] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+    const now = new Date();
+    return { month: now.getMonth() + 1, year: now.getFullYear() };
   });
+
+  useEffect(() => {
+    let alive = true;
+
+    async function fetchMonthData() {
+      setLoading(true);
+      try {
+        const data = await getMonthMoods(monthCursor.year, monthCursor.month);
+        if (alive) {
+          setMonthMoods(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch month moods:', error);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    void fetchMonthData();
+
+    return () => {
+      alive = false;
+    };
+  }, [getMonthMoods, monthCursor]);
 
   const entryByDate = useMemo(() => {
     const map = new Map<string, MoodEntry>();
-    for (const e of entries) map.set(e.date, e);
+    for (const e of monthMoods) {
+      map.set(e.date, e);
+    }
     return map;
-  }, [entries]);
+  }, [monthMoods]);
 
   const sortedEntries = useMemo(
-    () => [...entries].sort((a, b) => b.date.localeCompare(a.date)),
-    [entries],
+      () => [...monthMoods].sort((a, b) => b.date.localeCompare(a.date)),
+      [monthMoods],
   );
 
-  // Build calendar grid for monthCursor
   const calendarDays = useMemo(() => {
-    const year = monthCursor.getFullYear();
-    const month = monthCursor.getMonth();
-    const first = new Date(year, month, 1);
-    const startWeekday = first.getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const cells: Array<{ date: Date | null; iso: string | null }> = [];
-    for (let i = 0; i < startWeekday; i++) cells.push({ date: null, iso: null });
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(year, month, d);
-      cells.push({
-        date,
-        iso: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
-      });
-    }
-    return cells;
+    const { month, year } = monthCursor;
+    const firstDay = new Date(year, month - 1, 1).getDay();
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    const days: (number | null)[] = [];
+    for (let i = 0; i < firstDay; i++) days.push(null);
+    for (let d = 1; d <= daysInMonth; d++) days.push(d);
+
+    return days;
   }, [monthCursor]);
 
-  const monthLabel = `${monthName(monthCursor.getMonth())} ${monthCursor.getFullYear()}`;
-  const today = todayISO();
-  const canGoForward = (() => {
+  const monthLabel = `${monthName(monthCursor.month - 1)} ${monthCursor.year}`;
+
+  const canGoForward = () => {
     const now = new Date();
-    const current = new Date(now.getFullYear(), now.getMonth(), 1);
-    return monthCursor < current;
-  })();
+    const current = new Date(monthCursor.year, monthCursor.month - 1);
+    const today = new Date(now.getFullYear(), now.getMonth());
+    return current < today;
+  };
+
+  const nextMonth = () => {
+    setMonthCursor((prev) => {
+      const next = new Date(prev.year, prev.month, 1);
+      return { month: next.getMonth() + 1, year: next.getFullYear() };
+    });
+  };
+
+  const prevMonth = () => {
+    setMonthCursor((prev) => {
+      const next = new Date(prev.year, prev.month - 2, 1);
+      return { month: next.getMonth() + 1, year: next.getFullYear() };
+    });
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Calendar */}
-      <Card className="p-5 sm:p-6 animate-fade-in-up">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">{monthLabel}</h3>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() =>
-                setMonthCursor((c) => new Date(c.getFullYear(), c.getMonth() - 1, 1))
-              }
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              disabled={!canGoForward}
-              onClick={() =>
-                setMonthCursor((c) => new Date(c.getFullYear(), c.getMonth() + 1, 1))
-              }
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+      <div className="space-y-6">
+        {/* Header */}
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            History & Calendar
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Browse your past logs and see patterns across time.
+          </p>
         </div>
 
-        {/* Weekday header */}
-        <div className="grid grid-cols-7 gap-1.5 mb-2">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((w) => (
-            <div key={w} className="text-center text-[11px] font-medium text-muted-foreground">
-              {w}
-            </div>
-          ))}
-        </div>
-
-        {/* Days */}
-        <div className="grid grid-cols-7 gap-1.5">
-          {calendarDays.map((cell, i) => {
-            if (!cell.date) {
-              return <div key={i} className="aspect-square" />;
-            }
-            const entry = entryByDate.get(cell.iso!);
-            const isToday = cell.iso === today;
-            const mood = entry ? getMood(entry.mood) : null;
-            return (
-              <div
-                key={i}
-                className={cn(
-                  'relative flex aspect-square flex-col items-center justify-center rounded-lg border text-xs transition-all',
-                  isToday && 'ring-2 ring-primary ring-offset-1 ring-offset-background',
-                  mood ? cn(mood.bg, 'border-transparent') : 'border-border/60 bg-muted/30',
-                )}
-                title={mood ? `${mood.label}${entry?.note ? ' — ' + entry.note : ''}` : 'No entry'}
-              >
-                <span className={cn('text-sm', mood && 'font-semibold')}>
-                  {cell.date.getDate()}
-                </span>
-                {mood && <span className="text-base leading-none">{mood.emoji}</span>}
+        <div className="grid gap-6 lg:grid-cols-12">
+          {/* Calendar Card */}
+          <Card className="p-5 lg:col-span-7 sm:p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">{monthLabel}</h3>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Legend */}
-        <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1.5">
-          {MOODS.map((m) => (
-            <div key={m.id} className="flex items-center gap-1.5">
-              <span className={cn('h-3 w-3 rounded', m.bg)} />
-              <span className="text-xs text-muted-foreground">{m.label}</span>
+              <div className="flex items-center gap-1">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={prevMonth}
+                    className="h-8 w-8"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={nextMonth}
+                    disabled={!canGoForward()}
+                    className="h-8 w-8"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-          ))}
-        </div>
-      </Card>
 
-      {/* Timeline */}
-      <div className="animate-fade-in-up" style={{ animationDelay: '80ms' }}>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Recent entries</h3>
-          <span className="text-sm text-muted-foreground">{entries.length} total</span>
-        </div>
-
-        {sortedEntries.length === 0 ? (
-          <Card className="flex flex-col items-center justify-center gap-3 p-12 text-center">
-            <Inbox className="h-10 w-10 text-muted-foreground/50" />
-            <div>
-              <p className="font-medium">No entries yet</p>
-              <p className="text-sm text-muted-foreground">Your logged moods will appear here.</p>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground">
+              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                  <div key={d} className="py-1">
+                    {d}
+                  </div>
+              ))}
             </div>
+
+            <div className="mt-1 grid grid-cols-7 gap-1">
+              {calendarDays.map((day, idx) => {
+                if (day === null) {
+                  return <div key={`empty-${idx}`} className="aspect-square" />;
+                }
+
+                const dateStr = `${monthCursor.year}-${String(
+                    monthCursor.month,
+                ).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const entry = entryByDate.get(dateStr);
+                const mood = entry ? getMood(entry.mood as MoodId) : null;
+
+                return (
+                    <div
+                        key={dateStr}
+                        className={cn(
+                            'relative flex aspect-square flex-col items-center justify-between rounded-xl border p-1 text-xs transition-all',
+                            entry
+                                ? 'border-transparent text-white shadow-sm'
+                                : 'border-border/60 bg-muted/20 text-muted-foreground',
+                        )}
+                    >
+                      {entry && mood && (
+                          <span
+                              className={cn(
+                                  'absolute inset-0 -z-10 rounded-xl bg-gradient-to-br',
+                                  mood.gradient,
+                              )}
+                          />
+                      )}
+                      <span className="self-start text-[10px] font-medium leading-none">
+                    {day}
+                  </span>
+                      {mood ? (
+                          <span className="text-base sm:text-lg">{mood.emoji}</span>
+                      ) : (
+                          <span className="h-4" />
+                      )}
+                      <span className="h-1" />
+                    </div>
+                );
+              })}
+            </div>
+
+            {loading && (
+                <p className="mt-3 text-center text-xs text-muted-foreground animate-pulse">
+                  Loading month data…
+                </p>
+            )}
           </Card>
-        ) : (
-          <div className="relative space-y-3">
-            {/* timeline line */}
-            <div className="absolute left-[22px] top-2 bottom-2 w-px bg-border" />
-            {sortedEntries.slice(0, 40).map((entry) => (
-              <TimelineItem
-                key={entry.id}
-                entry={entry}
-                onDelete={deleteEntry}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-function TimelineItem({
-  entry,
-  onDelete,
-}: {
-  entry: MoodEntry;
-  onDelete: (id: string) => void;
-}) {
-  const mood = getMood(entry.mood);
-  const d = fromISODate(entry.date);
-  const time = new Date(entry.createdAt).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  return (
-    <div className="relative flex gap-4">
-      {/* node */}
-      <div
-        className={cn(
-          'z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl ring-4 ring-background',
-          mood.bg,
-        )}
-      >
-        {mood.emoji}
-      </div>
-
-      <Card className="flex-1 p-4 transition-shadow hover:shadow-md">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={cn('text-sm font-semibold', mood.color)}>{mood.label}</span>
-              <span className="text-xs text-muted-foreground">·</span>
-              <span className="text-xs text-muted-foreground">{time}</span>
+          {/* Timeline */}
+          <div className="space-y-4 lg:col-span-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ListFilter className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">Entries</h3>
+              </div>
+              <Badge variant="secondary" className="text-xs">
+                {monthMoods.length} this month
+              </Badge>
             </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">{formatDateLong(entry.date)}</p>
-            {entry.note && (
-              <p className="mt-2 text-sm leading-relaxed">{entry.note}</p>
+
+            {sortedEntries.length === 0 ? (
+                <Card className="flex flex-col items-center justify-center p-8 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+                    <BookOpen className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <p className="mt-3 text-sm font-medium">No logs for this month</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Track your mood on the Today page to build your history.
+                  </p>
+                </Card>
+            ) : (
+                <div className="space-y-3">
+                  <AnimatePresence initial={false}>
+                    {sortedEntries.map((entry) => {
+                      const mood = getMood(entry.mood as MoodId);
+                      return (
+                          <motion.div
+                              key={entry.id}
+                              layout
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -8 }}
+                          >
+                            <Card className="relative overflow-hidden p-4">
+                              <div className="flex items-start gap-3">
+                          <span
+                              className={cn(
+                                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl shadow-sm',
+                                  mood.gradient,
+                                  'bg-gradient-to-br text-white',
+                              )}
+                          >
+                            {mood.emoji}
+                          </span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold">
+                                {mood.label}
+                              </span>
+                                    <span className="text-[11px] text-muted-foreground">
+                                {formatDateShort(entry.date)}
+                              </span>
+                                  </div>
+                                  {entry.note ? (
+                                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground line-clamp-3">
+                                        {entry.note}
+                                      </p>
+                                  ) : (
+                                      <p className="mt-1 text-[11px] italic text-muted-foreground/60">
+                                        No note written
+                                      </p>
+                                  )}
+                                </div>
+                              </div>
+                            </Card>
+                          </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
             )}
           </div>
-
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <button
-                className="shrink-0 rounded-lg p-2 text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                aria-label="Delete entry"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will remove your {mood.label.toLowerCase()} entry from {formatDateLong(entry.date)}. This cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={() => {
-                    onDelete(entry.id);
-                    toast.success('Entry deleted');
-                  }}
-                >
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </div>
-      </Card>
-    </div>
+      </div>
   );
 }

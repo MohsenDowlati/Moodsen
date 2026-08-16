@@ -32,11 +32,58 @@ export interface MoodEntry {
   createdAt: string; // ISO
 }
 
+
+export interface MoodEntryResponse {
+  id: string;
+  user_id: string;
+  mood: MoodId;
+  note: string | null;
+  entry_date: string;
+  created_at: string;
+}
+
+export interface MoodEntryCreateOrUpdate {
+  mood: MoodId;
+  note?: string | null;
+}
+
+export interface MoodEntryUpdate {
+  mood?: MoodId | null;
+  note?: string | null;
+}
+
+export interface MoodStatisticsResponse {
+  total_entries: number;
+  current_streak: number;
+  longest_streak: number;
+  most_common_mood: MoodId | null;
+  average_mood_score: number | null;
+  best_weekday: string | null;
+  mood_distribution: Record<string, number>;
+}
+
+
 export interface User {
   id: string;
-  full_name: string;
+  current_streak: number;
+  daily_reminders_enabled: boolean;
+  dark_mode_enabled: boolean;
   email: string;
-  joinedAt: string; // ISO
+  full_name: string;
+  joined_at: string;
+  longest_streak: number;
+  reminder_time: string;
+  updated_at: string;
+}
+
+export interface PaginatedMoodEntriesResponse {
+  items: MoodEntryResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
 }
 
 export type ViewId = 'today' | 'history' | 'insights' | 'profile';

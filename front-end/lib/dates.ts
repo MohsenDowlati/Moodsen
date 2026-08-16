@@ -74,20 +74,13 @@ export function formatDistanceToNow(date: Date): string {
   return `${years}y ago`;
 }
 
-/**
- * Compute the current logging streak — consecutive days ending today or
- * yesterday that have entries.
- */
-export function computeStreak(dates: Set<string>): number {
-  let streak = 0;
-  let cursor = new Date();
-  // Allow today to be absent without breaking the streak.
-  if (!dates.has(toISODate(cursor))) {
-    cursor = addDays(cursor, -1);
-  }
-  while (dates.has(toISODate(cursor))) {
-    streak += 1;
-    cursor = addDays(cursor, -1);
-  }
-  return streak;
+export function formatDateShort(isoDate: string): string {
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return isoDate;
+
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
