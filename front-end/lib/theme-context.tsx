@@ -16,7 +16,7 @@ const ThemeContext = createContext<{
   setTheme: (t: Theme) => void;
 } | undefined>(undefined);
 
-const STORAGE_KEY = 'boltmood.theme.v1';
+const STORAGE_KEY = 'moodsen.theme.v1';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('light');

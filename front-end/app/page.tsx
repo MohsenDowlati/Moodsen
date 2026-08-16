@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,7 +13,6 @@ import {
   Mail,
   Lock,
   User as UserIcon,
-  Sparkles,
   TrendingUp,
   CalendarHeart,
   ShieldCheck,
@@ -33,7 +32,7 @@ const signinSchema = z.object({
 });
 
 const signupSchema = z.object({
-  name: z.string().min(2, 'Tell us your name (2+ characters)'),
+  full_name: z.string().min(2, 'Tell us your name (2+ characters)'),
   email: z.string().email('Enter a valid email address'),
   password: z
     .string()
@@ -47,11 +46,10 @@ type SignupValues = z.infer<typeof signupSchema>;
 
 export default function AuthPage() {
   const router = useRouter();
-  const { signIn, signUp, signInDemo } = useAuth();
+  const { signIn, signUp} = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [demoBusy, setDemoBusy] = useState(false);
 
   const {
     register,
@@ -72,30 +70,18 @@ export default function AuthPage() {
     setBusy(true);
     try {
       if (mode === 'signin') {
-        await signIn(values.email, values.password);
+        const data = await signIn(values.email, values.password);
+        console.log(data);
         toast.success('Welcome back!');
       } else {
-        await signUp(values.name, values.email, values.password);
-        toast.success('Account created. Welcome to BoltMood!');
+        await signUp(values.full_name, values.email, values.password);
+        toast.success('Account created. Welcome to Moodsen!');
       }
       router.replace('/app/today');
     } catch {
       toast.error('Something went wrong. Please try again.');
     } finally {
       setBusy(false);
-    }
-  };
-
-  const onDemo = async () => {
-    setDemoBusy(true);
-    try {
-      await signInDemo();
-      toast.success('Signed in with the demo account');
-      router.replace('/app/today');
-    } catch {
-      toast.error('Could not start the demo');
-    } finally {
-      setDemoBusy(false);
     }
   };
 
@@ -112,7 +98,7 @@ export default function AuthPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400 to-emerald-500 text-white shadow-lg shadow-teal-500/20">
               <CalendarHeart className="h-5 w-5" />
             </div>
-            <span className="text-xl font-semibold tracking-tight">BoltMood</span>
+            <span className="text-xl font-semibold tracking-tight">Moodsen</span>
           </div>
 
           <div className="animate-fade-in-up">
@@ -158,14 +144,14 @@ export default function AuthPage() {
                 id="name"
                 label="Full name"
                 icon={<UserIcon className="h-4 w-4" />}
-                error={errors.name?.message}
+                error={errors.full_name?.message}
               >
                 <Input
                   id="name"
-                  placeholder="Alex Rivera"
+                  placeholder="Mohsen Dowlati"
                   autoComplete="name"
                   className="h-11 border-input bg-background pl-10"
-                  {...register('name')}
+                  {...register('full_name')}
                 />
               </Field>
             )}
@@ -240,31 +226,6 @@ export default function AuthPage() {
               {mode === 'signin' ? 'Sign in' : 'Create account'}
             </Button>
           </form>
-
-          {/* Divider */}
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              or
-            </span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          {/* Demo button */}
-          <Button
-            type="button"
-            onClick={onDemo}
-            disabled={demoBusy}
-            variant="outline"
-            className="h-11 w-full border-dashed"
-          >
-            {demoBusy ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
-            )}
-            Try the demo account
-          </Button>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
             By continuing you agree to our{' '}
@@ -342,7 +303,7 @@ function BrandPanel() {
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/20">
           <CalendarHeart className="h-6 w-6" />
         </div>
-        <span className="text-2xl font-semibold tracking-tight">BoltMood</span>
+        <span className="text-2xl font-semibold tracking-tight">Moodsen</span>
       </div>
 
       {/* Hero copy */}

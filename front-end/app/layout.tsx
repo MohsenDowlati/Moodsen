@@ -8,11 +8,11 @@ import { Toaster } from '@/components/ui/sonner';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'BoltMood — Track how you feel, one day at a time',
+  title: 'Moodsen — Track how you feel, one day at a time',
   description:
     'A simple, beautiful mood tracker. Log your day, spot patterns, and understand yourself better.',
   openGraph: {
-    title: 'BoltMood — Track how you feel, one day at a time',
+    title: 'Moodsen — Track how you feel, one day at a time',
     description:
       'A simple, beautiful mood tracker. Log your day, spot patterns, and understand yourself better.',
   },

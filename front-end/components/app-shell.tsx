@@ -184,7 +184,7 @@ function Brand() {
       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400 to-emerald-500 text-white shadow-md shadow-teal-500/20">
         <CalendarHeart className="h-5 w-5" />
       </div>
-      <span className="text-lg font-semibold tracking-tight">BoltMood</span>
+      <span className="text-lg font-semibold tracking-tight">Moodsen</span>
     </div>
   );
 }

@@ -34,7 +34,7 @@ export interface MoodEntry {
 
 export interface User {
   id: string;
-  name: string;
+  full_name: string;
   email: string;
   joinedAt: string; // ISO
 }

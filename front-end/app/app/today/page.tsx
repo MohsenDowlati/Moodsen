@@ -76,7 +76,7 @@ export default function TodayPage() {
       {/* Greeting */}
       <div className="animate-fade-in-up">
         <p className="text-sm font-medium text-muted-foreground">
-          {greetingFor()}, {user?.name.split(' ')[0]}
+          {greetingFor()}, {user?.full_name.split(' ')[0]}
         </p>
         <h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
           How are you feeling today?
