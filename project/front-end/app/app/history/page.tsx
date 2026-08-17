@@ -5,13 +5,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar as CalendarIcon,
+  ListFilter,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { getMood } from '@/lib/moods';
-import { monthName } from '@/lib/dates';
+import { monthName, formatDateShort } from '@/lib/dates';
 import type { MoodEntry, MoodId } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -23,40 +26,23 @@ export default function HistoryPage() {
 
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
-
-    return {
-      month: now.getMonth() + 1,
-      year: now.getFullYear(),
-    };
+    return { month: now.getMonth() + 1, year: now.getFullYear() };
   });
-
-  const [hoveredNote, setHoveredNote] = useState<{
-    note: string;
-    x: number;
-    y: number;
-  } | null>(null);
 
   useEffect(() => {
     let alive = true;
 
     async function fetchMonthData() {
       setLoading(true);
-
       try {
-        const data = await getMonthMoods(
-            monthCursor.year,
-            monthCursor.month,
-        );
-
+        const data = await getMonthMoods(monthCursor.year, monthCursor.month);
         if (alive) {
           setMonthMoods(data);
         }
       } catch (error) {
         console.error('Failed to fetch month moods:', error);
       } finally {
-        if (alive) {
-          setLoading(false);
-        }
+        if (alive) setLoading(false);
       }
     }
 
@@ -69,29 +55,25 @@ export default function HistoryPage() {
 
   const entryByDate = useMemo(() => {
     const map = new Map<string, MoodEntry>();
-
-    for (const entry of monthMoods) {
-      map.set(entry.date, entry);
+    for (const e of monthMoods) {
+      map.set(e.date, e);
     }
-
     return map;
   }, [monthMoods]);
 
+  const sortedEntries = useMemo(
+      () => [...monthMoods].sort((a, b) => b.date.localeCompare(a.date)),
+      [monthMoods],
+  );
+
   const calendarDays = useMemo(() => {
     const { month, year } = monthCursor;
-
     const firstDay = new Date(year, month - 1, 1).getDay();
     const daysInMonth = new Date(year, month, 0).getDate();
 
     const days: (number | null)[] = [];
-
-    for (let index = 0; index < firstDay; index++) {
-      days.push(null);
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      days.push(day);
-    }
+    for (let i = 0; i < firstDay; i++) days.push(null);
+    for (let d = 1; d <= daysInMonth; d++) days.push(d);
 
     return days;
   }, [monthCursor]);
@@ -100,136 +82,60 @@ export default function HistoryPage() {
 
   const canGoForward = () => {
     const now = new Date();
-
-    const currentMonth = new Date(
-        monthCursor.year,
-        monthCursor.month - 1,
-    );
-
-    const currentDate = new Date(now.getFullYear(), now.getMonth());
-
-    return currentMonth < currentDate;
+    const current = new Date(monthCursor.year, monthCursor.month - 1);
+    const today = new Date(now.getFullYear(), now.getMonth());
+    return current < today;
   };
 
   const nextMonth = () => {
-    setHoveredNote(null);
-
-    setMonthCursor((previous) => {
-      const next = new Date(
-          previous.year,
-          previous.month,
-          1,
-      );
-
-      return {
-        month: next.getMonth() + 1,
-        year: next.getFullYear(),
-      };
+    setMonthCursor((prev) => {
+      const next = new Date(prev.year, prev.month, 1);
+      return { month: next.getMonth() + 1, year: next.getFullYear() };
     });
   };
 
   const prevMonth = () => {
-    setHoveredNote(null);
-
-    setMonthCursor((previous) => {
-      const next = new Date(
-          previous.year,
-          previous.month - 2,
-          1,
-      );
-
-      return {
-        month: next.getMonth() + 1,
-        year: next.getFullYear(),
-      };
+    setMonthCursor((prev) => {
+      const next = new Date(prev.year, prev.month - 2, 1);
+      return { month: next.getMonth() + 1, year: next.getFullYear() };
     });
-  };
-
-  const handleDateMouseEnter = (
-      event: React.MouseEvent<HTMLDivElement>,
-      note: string | undefined,
-  ) => {
-    if (!note?.trim()) {
-      return;
-    }
-
-    setHoveredNote({
-      note,
-      x: event.clientX,
-      y: event.clientY,
-    });
-  };
-
-  const handleDateMouseMove = (
-      event: React.MouseEvent<HTMLDivElement>,
-      note: string | undefined,
-  ) => {
-    if (!note?.trim()) {
-      return;
-    }
-
-    setHoveredNote((previous) => {
-      if (!previous) {
-        return {
-          note,
-          x: event.clientX,
-          y: event.clientY,
-        };
-      }
-
-      return {
-        ...previous,
-        x: event.clientX,
-        y: event.clientY,
-      };
-    });
-  };
-
-  const handleDateMouseLeave = () => {
-    setHoveredNote(null);
   };
 
   return (
       <div className="space-y-6">
+        {/* Header */}
         <div>
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             History & Calendar
           </h2>
-
           <p className="mt-1 text-sm text-muted-foreground">
             Browse your past logs and see patterns across time.
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-1">
+        <div className="grid gap-6 lg:grid-cols-12">
+          {/* Calendar Card */}
           <Card className="p-5 lg:col-span-7 sm:p-6">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CalendarIcon className="h-4 w-4 text-primary" />
-
-                <h3 className="text-sm font-semibold">
-                  {monthLabel}
-                </h3>
+                <h3 className="text-sm font-semibold">{monthLabel}</h3>
               </div>
-
               <div className="flex items-center gap-1">
                 <Button
                     variant="ghost"
                     size="icon"
                     onClick={prevMonth}
                     className="h-8 w-8"
-                    aria-label="Previous month"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-
                 <Button
                     variant="ghost"
                     size="icon"
                     onClick={nextMonth}
                     disabled={!canGoForward()}
                     className="h-8 w-8"
-                    aria-label="Next month"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -237,35 +143,24 @@ export default function HistoryPage() {
             </div>
 
             <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground">
-              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
-                  <div key={day} className="py-1">
-                    {day}
+              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                  <div key={d} className="py-1">
+                    {d}
                   </div>
               ))}
             </div>
 
             <div className="mt-1 grid grid-cols-7 gap-1">
-              {calendarDays.map((day, index) => {
+              {calendarDays.map((day, idx) => {
                 if (day === null) {
-                  return (
-                      <div
-                          key={`empty-${index}`}
-                          className="aspect-square"
-                      />
-                  );
+                  return <div key={`empty-${idx}`} className="aspect-square" />;
                 }
 
                 const dateStr = `${monthCursor.year}-${String(
                     monthCursor.month,
                 ).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
                 const entry = entryByDate.get(dateStr);
-                const mood = entry
-                    ? getMood(entry.mood as MoodId)
-                    : null;
-
-                const note = entry?.note;
-                const hasNote = Boolean(note?.trim());
+                const mood = entry ? getMood(entry.mood as MoodId) : null;
 
                 return (
                     <div
@@ -275,15 +170,7 @@ export default function HistoryPage() {
                             entry
                                 ? 'border-transparent text-white shadow-sm'
                                 : 'border-border/60 bg-muted/20 text-muted-foreground',
-                            hasNote && 'cursor-help',
                         )}
-                        onMouseEnter={(event) =>
-                            handleDateMouseEnter(event, note)
-                        }
-                        onMouseMove={(event) =>
-                            handleDateMouseMove(event, note)
-                        }
-                        onMouseLeave={handleDateMouseLeave}
                     >
                       {entry && mood && (
                           <span
@@ -293,19 +180,14 @@ export default function HistoryPage() {
                               )}
                           />
                       )}
-
                       <span className="self-start text-[10px] font-medium leading-none">
                     {day}
                   </span>
-
                       {mood ? (
-                          <span className="text-base sm:text-lg">
-                      {mood.emoji}
-                    </span>
+                          <span className="text-base sm:text-lg">{mood.emoji}</span>
                       ) : (
                           <span className="h-4" />
                       )}
-
                       <span className="h-1" />
                     </div>
                 );
@@ -313,50 +195,12 @@ export default function HistoryPage() {
             </div>
 
             {loading && (
-                <p className="mt-3 animate-pulse text-center text-xs text-muted-foreground">
+                <p className="mt-3 text-center text-xs text-muted-foreground animate-pulse">
                   Loading month data…
                 </p>
             )}
           </Card>
         </div>
-
-        <AnimatePresence>
-          {hoveredNote && (
-              <motion.div
-                  key="note-tooltip"
-                  initial={{
-                    opacity: 0,
-                    scale: 0.94,
-                    x: 8,
-                    y: 8,
-                  }}
-                  animate={{
-                    opacity: 1,
-                    scale: 1,
-                    x: 0,
-                    y: 0,
-                  }}
-                  exit={{
-                    opacity: 0,
-                    scale: 0.94,
-                    x: 8,
-                    y: 8,
-                  }}
-                  transition={{
-                    duration: 0.16,
-                    ease: 'easeOut',
-                  }}
-                  className="pointer-events-none fixed z-50 max-w-xs rounded-lg bg-black/90 px-3 py-2 text-sm leading-5 text-white shadow-xl"
-                  style={{
-                    left: hoveredNote.x + 14,
-                    top: hoveredNote.y - 14,
-                    transform: 'translateY(-100%)',
-                  }}
-              >
-                {hoveredNote.note}
-              </motion.div>
-          )}
-        </AnimatePresence>
       </div>
   );
 }

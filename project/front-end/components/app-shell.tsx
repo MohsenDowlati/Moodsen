@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const active = NAV.find((n) => pathname.startsWith(n.href)) ?? NAV[0];
   const heading = TITLE_MAP[active.id];
 
-  const initials = (user?.full_name ?? '?')
+  const initials = (user?.name ?? '?')
     .split(' ')
     .map((w) => w[0])
     .slice(0, 2)
@@ -133,7 +133,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuLabel>
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">{user?.full_name}</span>
+                  <span className="text-sm font-medium">{user?.name}</span>
                   <span className="truncate text-xs font-normal text-muted-foreground">{user?.email}</span>
                 </div>
               </DropdownMenuLabel>
@@ -197,7 +197,7 @@ function SidebarContent({
   onNavigate,
 }: {
   active: ViewId;
-  user: { full_name: string; email: string } | null;
+  user: { name: string; email: string } | null;
   onSignOut: () => void;
   initials: string;
   onNavigate?: () => void;
@@ -247,7 +247,7 @@ function SidebarContent({
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{user?.full_name}</p>
+            <p className="truncate text-sm font-medium">{user?.name}</p>
             <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
           </div>
         </div>

@@ -103,23 +103,6 @@
   100% { transform: translateX(100%); }
 }
 
-@keyframes note-tooltip-in {
-  from {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.96);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.note-tooltip {
-  animation: note-tooltip-in 150ms ease-out;
-}
-
-
 .animate-float-slow { animation: float-slow 7s ease-in-out infinite; }
 .animate-float-slower { animation: float-slower 9s ease-in-out infinite; }
 .animate-fade-in-up { animation: fade-in-up 0.5s ease-out both; }
