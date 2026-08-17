@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Calendar as CalendarIcon,
   ListFilter,
-  Sparkles,
   BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -201,81 +200,6 @@ export default function HistoryPage() {
                 </p>
             )}
           </Card>
-
-          {/* Timeline */}
-          <div className="space-y-4 lg:col-span-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ListFilter className="h-4 w-4 text-primary" />
-                <h3 className="text-sm font-semibold">Entries</h3>
-              </div>
-              <Badge variant="secondary" className="text-xs">
-                {monthMoods.length} this month
-              </Badge>
-            </div>
-
-            {sortedEntries.length === 0 ? (
-                <Card className="flex flex-col items-center justify-center p-8 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
-                    <BookOpen className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <p className="mt-3 text-sm font-medium">No logs for this month</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Track your mood on the Today page to build your history.
-                  </p>
-                </Card>
-            ) : (
-                <div className="space-y-3">
-                  <AnimatePresence initial={false}>
-                    {sortedEntries.map((entry) => {
-                      const mood = getMood(entry.mood as MoodId);
-                      return (
-                          <motion.div
-                              key={entry.id}
-                              layout
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -8 }}
-                          >
-                            <Card className="relative overflow-hidden p-4">
-                              <div className="flex items-start gap-3">
-                          <span
-                              className={cn(
-                                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl shadow-sm',
-                                  mood.gradient,
-                                  'bg-gradient-to-br text-white',
-                              )}
-                          >
-                            {mood.emoji}
-                          </span>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-semibold">
-                                {mood.label}
-                              </span>
-                                    <span className="text-[11px] text-muted-foreground">
-                                {formatDateShort(entry.date)}
-                              </span>
-                                  </div>
-                                  {entry.note ? (
-                                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground line-clamp-3">
-                                        {entry.note}
-                                      </p>
-                                  ) : (
-                                      <p className="mt-1 text-[11px] italic text-muted-foreground/60">
-                                        No note written
-                                      </p>
-                                  )}
-                                </div>
-                              </div>
-                            </Card>
-                          </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                </div>
-            )}
-          </div>
         </div>
       </div>
   );
