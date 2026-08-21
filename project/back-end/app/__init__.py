@@ -1,1 +1,0 @@
-"""Moodsen backend application package."""

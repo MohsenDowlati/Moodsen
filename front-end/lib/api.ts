@@ -22,7 +22,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const method = (options.method ?? 'GET').toUpperCase();
     const headers = new Headers(options.headers);
 
-    headers.set('Content-Type', 'application/json');
+    if (options.body && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
+    }
 
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
         const csrfToken = getCookie('csrf_token');
@@ -37,7 +39,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         credentials: 'include',
     });
 
-    if (!res.ok) throw new Error(`Request failed ${res.status}`);
+    if (!res.ok) {
+        let detail = `Request failed (${res.status})`;
+        try {
+            const body = await res.json();
+            if (typeof body?.detail === 'string') detail = body.detail;
+        } catch {
+            // Keep the HTTP status when the server did not return JSON.
+        }
+        throw new Error(detail);
+    }
+    if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
 }
 
@@ -123,7 +135,7 @@ export async function apiGetAllMoodEntries(
     pageSize = 20,
 ): Promise<PaginatedMoodEntriesResponse> {
     return request<PaginatedMoodEntriesResponse>(
-        `/moods/all?page=${page}&page_size=${pageSize}`,
+        `/moods/?page=${page}&page_size=${pageSize}`,
     );
 }
 
@@ -148,11 +160,23 @@ export async function apiDeleteEntry(id: string) {
 }
 
 export async function apiGetNotifications() {
-  return request<AppNotification[]>('/notifications');
+  const response = await request<{ items: Array<{
+    id: string;
+    category: 'reminder' | 'streak_milestone' | 'system';
+    title: string;
+    message: string;
+    read_at: string | null;
+    created_at: string;
+  }> }>('/notifications');
+  return response.items;
 }
 
 export async function apiMarkNotificationRead(id: string) {
-  return request<void>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' });
+  return request<void>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
+}
+
+export async function apiMarkAllNotificationsRead() {
+  return request<{ updated_count: number }>('/notifications/read-all', { method: 'PATCH' });
 }
 
 export async function apiUpdateReminderSettings(settings: Partial<ReminderSettings>) {

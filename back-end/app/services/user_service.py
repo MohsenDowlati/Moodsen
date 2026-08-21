@@ -1,7 +1,10 @@
 from datetime import datetime
+from time import sleep
 from uuid import UUID
 
 from pwdlib import PasswordHash
+from sqlalchemy.exc import OperationalError
+from sqlalchemy import update as sql_update
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -77,13 +80,38 @@ class UserService:
         payload: UserUpdate,
     ) -> User:
         update_data = payload.model_dump(exclude_unset=True)
+        if not update_data:
+            return user
 
-        for field, value in update_data.items():
-            setattr(user, field, value)
+        for attempt in range(5):
+            try:
+                values = {
+                    **update_data,
+                    "updated_at": datetime.utcnow(),
+                }
+                # Issue a narrow SQL UPDATE instead of flushing the whole
+                # possibly-stale ORM object. This lets the scheduler update
+                # streak columns concurrently without overwriting them.
+                db.execute(
+                    sql_update(User)
+                    .where(User.id == user.id)
+                    .values(**values)
+                )
+                db.commit()
+                db.expire(user)
+                db.refresh(user)
+                return user
+            except OperationalError as error:
+                db.rollback()
 
-        user.updated_at = datetime.utcnow()
+                # MariaDB error 1020 means another transaction changed the
+                # row after this session read it. Refresh the object and
+                # reapply only this request's fields before retrying.
+                original = getattr(error, "orig", None)
+                error_code = original.args[0] if getattr(original, "args", ()) else None
+                if error_code != 1020 or attempt == 4:
+                    raise
 
-        db.commit()
-        db.refresh(user)
+                sleep(0.05 * (attempt + 1))
 
-        return user
+        raise RuntimeError("Unable to update user after concurrent changes")

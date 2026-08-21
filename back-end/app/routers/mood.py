@@ -173,6 +173,25 @@ def get_all_mood_entries(
 
 
 @router.get(
+    "/all",
+    response_model=PaginatedMoodEntriesResponse,
+    include_in_schema=False,
+)
+def get_all_mood_entries_legacy(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+):
+    return mood_entry_service.get_paginated_result(
+        db=db,
+        user_id=current_user.id,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get(
     "/{mood_entry_id}",
     response_model=MoodEntryResponse,
 )

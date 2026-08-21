@@ -318,7 +318,7 @@ function BrandPanel() {
 
         {/* Floating mood chips */}
         <div className="mt-8 flex flex-wrap gap-2">
-          {MOODS.slice(0, 5).map((m, i) => (
+          {MOODS.slice(0, 4).map((m, i) => (
             <div
               key={m.id}
               className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-medium text-white ring-1 ring-white/15 backdrop-blur-sm"

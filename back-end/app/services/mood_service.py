@@ -5,6 +5,7 @@ from math import ceil
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.models import MoodEntry
 from app.models import User
@@ -12,6 +13,7 @@ from app.schemas.mood import (
     MoodEntryCreateOrUpdate,
     MoodEntryUpdate,
 )
+from app.time_utils import local_today
 
 MOOD_SCORES: dict[str, int] = {
     "angry": 1,
@@ -45,7 +47,7 @@ class MoodEntryService:
             db.query(MoodEntry)
             .filter(
                 MoodEntry.user_id == user_id,
-                MoodEntry.entry_date == date.today(),
+                MoodEntry.entry_date == local_today(),
             )
             .first()
         )
@@ -91,7 +93,7 @@ class MoodEntryService:
 
             (user_id, entry_date)
         """
-        today = date.today()
+        today = local_today()
 
         entry = (
             db.query(MoodEntry)
@@ -118,7 +120,27 @@ class MoodEntryService:
             entry.mood = payload.mood
             entry.note = normalized_note
 
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two tabs can submit today's mood concurrently. The unique
+            # constraint is the source of truth; reload the winning row and
+            # apply this request as an update instead of leaking a 500.
+            db.rollback()
+            entry = (
+                db.query(MoodEntry)
+                .filter(
+                    MoodEntry.user_id == user.id,
+                    MoodEntry.entry_date == today,
+                )
+                .first()
+            )
+            if entry is None:
+                raise
+            entry.mood = payload.mood
+            entry.note = normalized_note
+            created = False
+            db.commit()
         db.refresh(entry)
 
         self.update_user_streaks(db, user)
@@ -188,7 +210,7 @@ class MoodEntryService:
         if days < 1:
             raise ValueError("Days must be at least 1")
 
-        end_date = date.today()
+        end_date = local_today()
         start_date = end_date - timedelta(days=days - 1)
 
         return (
@@ -315,15 +337,21 @@ class MoodEntryService:
         """
         Calculate the active consecutive-day streak.
 
-        A current streak requires an entry today.
+        The active streak may end with yesterday when today's check-in has not
+        happened yet. This matches the UI's definition: a user who logged
+        every day through yesterday still has an active streak until the day
+        is missed.
 
         Examples:
         - entries today, yesterday, two days ago: 3
-        - entry yesterday but none today: 0
+        - entry yesterday but none today: the consecutive run through yesterday
         """
         entry_dates = {entry.entry_date for entry in entries}
 
-        current_day = date.today()
+        current_day = local_today()
+
+        if current_day not in entry_dates:
+            current_day -= timedelta(days=1)
 
         if current_day not in entry_dates:
             return 0

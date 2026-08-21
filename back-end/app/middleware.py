@@ -1,3 +1,4 @@
+import hmac
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -11,19 +12,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 load_dotenv()
 
-JWT_SECRET = os.getenv("JWT_SECRET", "what")
+JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "300")
 )
 
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").rstrip("/")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 ACCESS_COOKIE_NAME = "access_token"
 CSRF_COOKIE_NAME = "csrf_token"
 
 def create_access_token(user_id: str, email: str) -> str:
+    if not JWT_SECRET:
+        raise RuntimeError("JWT_SECRET must be configured")
     now = datetime.now(timezone.utc)
 
     payload = {
@@ -37,6 +40,11 @@ def create_access_token(user_id: str, email: str) -> str:
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
+    if not JWT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is not configured",
+        )
     try:
         return jwt.decode(
             token,
@@ -136,7 +144,11 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
             csrf_header = request.headers.get("X-CSRF-Token")
 
-            if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+            if (
+                not csrf_cookie
+                or not csrf_header
+                or not hmac.compare_digest(csrf_cookie, csrf_header)
+            ):
                 return Response(
                     content='{"detail":"Invalid or missing CSRF token"}',
                     status_code=status.HTTP_403_FORBIDDEN,

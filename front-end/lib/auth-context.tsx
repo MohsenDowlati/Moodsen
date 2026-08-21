@@ -18,14 +18,10 @@ import type {
     ReminderSettings,
     User,
 } from './types';
-import { todayISO, toISODate } from './dates';
+import { todayISO } from './dates';
 
 import {
     DEFAULT_REMINDER_SETTINGS,
-    makeReminderNotification,
-    makeStreakNotification,
-    shouldGenerateDailyReminder,
-    shouldGenerateStreakNotification,
     sortNotifications,
     unreadCount,
 } from './notifications';
@@ -68,6 +64,15 @@ type MoodWireStatistics = {
     mood_distribution: Record<string, number>;
 };
 
+type NotificationWire = {
+    id: string;
+    category: 'reminder' | 'streak_milestone' | 'system';
+    title: string;
+    message: string;
+    read_at: string | null;
+    created_at: string;
+};
+
 // ---- Mapping helpers (hoisted out of the component) ----
 
 function mapMoodEntry(entry: MoodWireEntry): MoodEntry {
@@ -82,6 +87,37 @@ function mapMoodEntry(entry: MoodWireEntry): MoodEntry {
 
 function mapMoodStatistics(stats: MoodWireStatistics): MoodStatisticsResponse {
     return stats;
+}
+
+function mapNotification(notification: NotificationWire): AppNotification {
+    return {
+        id: notification.id,
+        kind: notification.category === 'streak_milestone' ? 'streak' :
+            notification.category === 'reminder' ? 'reminder' : 'info',
+        title: notification.title,
+        body: notification.message,
+        date: notification.created_at.slice(0, 10),
+        read: Boolean(notification.read_at),
+        createdAt: notification.created_at,
+    };
+}
+
+function mapSessionEntries(entries: MoodWireEntry[] = []): MoodEntry[] {
+    return entries.map(mapMoodEntry);
+}
+
+function mapSessionNotifications(
+    notifications: NotificationWire[] = [],
+): AppNotification[] {
+    return notifications.map(mapNotification);
+}
+
+function reminderSettingsFromUser(currentUser: User): ReminderSettings {
+    const hour = Number.parseInt(currentUser.reminder_time?.slice(0, 2) ?? '', 10);
+    return {
+        enabled: currentUser.daily_reminders_enabled,
+        hour: Number.isFinite(hour) ? hour : DEFAULT_REMINDER_SETTINGS.hour,
+    };
 }
 
 interface AuthContextValue {
@@ -166,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(currentUser);
             setEntries(currentEntries);
             setNotifications(currentNotifications);
+            setReminderSettings(reminderSettingsFromUser(currentUser));
 
             persist(currentUser, currentEntries, currentNotifications);
         },
@@ -204,8 +241,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 startSession(
                     session.user,
-                    session.entries ?? [],
-                    session.notifications ?? [],
+                    mapSessionEntries(session.entries as MoodWireEntry[]),
+                    mapSessionNotifications(session.notifications as NotificationWire[]),
                 );
             } catch (error) {
                 if (mounted) {
@@ -236,8 +273,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             startSession(
                 response.user,
-                response.entries ?? [],
-                response.notifications ?? [],
+                mapSessionEntries(response.entries as MoodWireEntry[]),
+                mapSessionNotifications(response.notifications as NotificationWire[]),
             );
 
             return response;
@@ -259,8 +296,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             startSession(
                 response.user,
-                response.entries ?? [],
-                response.notifications ?? [],
+                mapSessionEntries(response.entries as MoodWireEntry[]),
+                mapSessionNotifications(response.notifications as NotificationWire[]),
             );
 
             return response;
@@ -455,6 +492,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 persist(user, entries, nextNotifications);
             }
 
+            void api.apiMarkAllNotificationsRead().catch((error) => {
+                console.error('Marking all notifications as read failed:', error);
+            });
+
             return nextNotifications;
         });
     }, [user, entries, persist]);
@@ -488,51 +529,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     useEffect(() => {
-        if (!user) {
-            return;
-        }
+        if (!user) return;
 
-        const newNotifications: AppNotification[] = [];
-
-        if (shouldGenerateDailyReminder(reminderSettings, notifications)) {
-            newNotifications.push(
-                makeReminderNotification(undefined, user.full_name),
-            );
-        }
-
-        if (shouldGenerateStreakNotification(entries, notifications)) {
-            const dates = new Set(entries.map((entry) => entry.date));
-
-            let streak = 0;
-            const cursor = new Date();
-
-            if (!dates.has(toISODate(cursor))) {
-                cursor.setDate(cursor.getDate() - 1);
+        let cancelled = false;
+        const refresh = async () => {
+            try {
+                const serverNotifications = await api.apiGetNotifications();
+                if (!cancelled) {
+                    const next = mapSessionNotifications(serverNotifications);
+                    setNotifications(next);
+                    persist(user, entries, next);
+                }
+            } catch (error) {
+                console.error('Refreshing notifications failed:', error);
             }
+        };
 
-            while (dates.has(toISODate(cursor))) {
-                streak += 1;
-                cursor.setDate(cursor.getDate() - 1);
-            }
-
-            newNotifications.push(makeStreakNotification(streak));
-        }
-
-        if (newNotifications.length === 0) {
-            return;
-        }
-
-        setNotifications((previousNotifications) => {
-            const nextNotifications = sortNotifications([
-                ...newNotifications,
-                ...previousNotifications,
-            ]);
-
-            persist(user, entries, nextNotifications);
-
-            return nextNotifications;
-        });
-    }, [user, entries, notifications, reminderSettings, persist]);
+        void refresh();
+        const timer = window.setInterval(refresh, 60_000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+        };
+    }, [user, entries, persist]);
 
     const unreadNotificationCount = useMemo(
         () => unreadCount(notifications),

@@ -32,6 +32,11 @@ class UserUpdate(BaseModel):
     reminder_time: time | None = None
 
 
+class ReminderSettingsUpdate(BaseModel):
+    enabled: bool | None = None
+    hour: int | None = Field(default=None, ge=0, le=23)
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
