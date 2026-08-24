@@ -411,6 +411,17 @@ class MoodEntryService:
         db.commit()
         db.refresh(user)
 
+        # Keep the local materialized leaderboard immediately consistent even
+        # when Kafka is disabled for development or tests. Kafka still carries
+        # the same event to the distributed consumer in production.
+        from app.services.leaderboard_service import LeaderboardService
+
+        LeaderboardService().upsert_score(db, user.id, user.current_streak)
+
+        from app.services.kafka_service import publish_streak_updated
+
+        publish_streak_updated(user.id, user.current_streak)
+
         return user
 
     def most_common_mood(

@@ -4,7 +4,7 @@ import type {
     AppNotification,
     ReminderSettings,
     MoodEntryResponse,
-    MoodStatisticsResponse, MoodEntryCreateOrUpdate, MoodEntryUpdate, PaginatedMoodEntriesResponse
+    MoodStatisticsResponse, MoodEntryCreateOrUpdate, MoodEntryUpdate, PaginatedMoodEntriesResponse, LeaderboardResponse
 } from './types';
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
@@ -157,6 +157,10 @@ export async function apiUpdateMoodById(
 
 export async function apiDeleteEntry(id: string) {
   return request<void>(`/moods/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function apiGetLeaderboard(limit = 50): Promise<LeaderboardResponse> {
+  return request<LeaderboardResponse>(`/leaderboard?limit=${limit}`);
 }
 
 export async function apiGetNotifications() {

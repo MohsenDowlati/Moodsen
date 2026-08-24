@@ -9,5 +9,6 @@ python-multipart
 pyjwt
 pwdlib[argon2]
 apscheduler
+kafka-python
 pytest
 httpx

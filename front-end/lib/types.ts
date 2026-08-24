@@ -86,7 +86,23 @@ export interface PaginatedMoodEntriesResponse {
   has_previous: boolean;
 }
 
-export type ViewId = 'today' | 'history' | 'insights' | 'profile';
+export type ViewId = 'today' | 'history' | 'insights' | 'leaderboard' | 'profile';
+
+export interface LeaderboardEntry {
+  rank: number;
+  user_id: string;
+  full_name: string;
+  score: number;
+  streak_days: number;
+  is_current_user: boolean;
+  updated_at: string;
+}
+
+export interface LeaderboardResponse {
+  items: LeaderboardEntry[];
+  current_user: LeaderboardEntry;
+  total_users: number;
+}
 
 export type NotificationKind = 'reminder' | 'streak' | 'info';
 

@@ -8,6 +8,7 @@ import {
   Sparkles,
   CalendarDays,
   TrendingUp,
+  Trophy,
   User as UserIcon,
   LogOut,
   Menu,
@@ -35,6 +36,7 @@ const NAV: Array<{ id: ViewId; label: string; href: string; icon: typeof Sparkle
   { id: 'today', label: 'Today', href: '/app/today', icon: Sparkles },
   { id: 'history', label: 'History', href: '/app/history', icon: CalendarDays },
   { id: 'insights', label: 'Insights', href: '/app/insights', icon: TrendingUp },
+  { id: 'leaderboard', label: 'Leaderboard', href: '/app/leaderboard', icon: Trophy },
   { id: 'profile', label: 'Profile', href: '/app/profile', icon: UserIcon },
 ];
 
@@ -42,6 +44,7 @@ const TITLE_MAP: Record<ViewId, { title: string; subtitle: string }> = {
   today: { title: 'Today', subtitle: 'How are you feeling right now?' },
   history: { title: 'History', subtitle: 'Your mood over time' },
   insights: { title: 'Insights', subtitle: 'Patterns and trends' },
+  leaderboard: { title: 'Leaderboard', subtitle: 'Build your streak alongside the community' },
   profile: { title: 'Profile', subtitle: 'Your account and settings' },
 };
 

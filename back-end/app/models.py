@@ -59,6 +59,28 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    leaderboard_score = relationship(
+        "LeaderboardScore",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class LeaderboardScore(Base):
+    __tablename__ = "leaderboard_scores"
+
+    user_id = Column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    score = Column(Integer, nullable=False, default=0, index=True)
+    streak_days = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="leaderboard_score")
+
 
 class MoodEntry(Base):
     __tablename__ = "mood_entries"
