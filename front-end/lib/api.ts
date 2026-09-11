@@ -9,6 +9,10 @@ import type {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
+export function notificationStreamUrl(): string {
+  return `${BASE}/notifications/stream`;
+}
+
 function getCookie(name: string): string | null {
     const value = document.cookie
         .split('; ')
@@ -171,7 +175,7 @@ export async function apiGetNotifications() {
     message: string;
     read_at: string | null;
     created_at: string;
-  }> }>('/notifications');
+  }> }>('/notifications?page=1&page_size=100');
   return response.items;
 }
 
@@ -183,6 +187,17 @@ export async function apiMarkAllNotificationsRead() {
   return request<{ updated_count: number }>('/notifications/read-all', { method: 'PATCH' });
 }
 
+export async function apiClearNotifications() {
+  return request<{ deleted_count: number }>('/notifications', { method: 'DELETE' });
+}
+
+export async function apiUpdateTimezone(timezone: string) {
+  return request<User>('/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ timezone }),
+  });
+}
+
 export async function apiUpdateReminderSettings(settings: Partial<ReminderSettings>) {
-  return request<ReminderSettings>('/settings/reminder', { method: 'POST', body: JSON.stringify(settings) });
+  return request<User>('/settings/reminder', { method: 'POST', body: JSON.stringify(settings) });
 }

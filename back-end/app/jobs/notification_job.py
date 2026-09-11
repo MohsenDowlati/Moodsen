@@ -2,6 +2,8 @@ import logging
 
 from app.database import SessionLocal
 from app.services.reminder_service import ReminderService
+from app.services.notification_outbox_service import NotificationOutboxService
+from app.services.redis_service import distributed_lock
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +19,13 @@ def run_notification_jobs() -> tuple[int, int]:
     try:
         reminder_service = ReminderService()
 
-        reminder_count = reminder_service.send_daily_reminders(db)
-        streak_count = reminder_service.send_streak_milestones(db)
+        with distributed_lock("moodsen:notification-scheduler", 55) as acquired:
+            if not acquired:
+                return 0, 0
+            reminder_count = reminder_service.send_daily_reminders(db)
+            # Streak milestones are normally enqueued with the mood transaction.
+            streak_count = 0
+            NotificationOutboxService().purge_published(db)
 
         logger.info(
             "Notification job completed: %s reminders, %s streak milestones",

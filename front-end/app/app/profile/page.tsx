@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Mail,
   CalendarDays,
@@ -14,6 +14,7 @@ import {
   Settings as SettingsIcon,
   Bell,
   Clock,
+  Globe2,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -22,6 +23,7 @@ import { formatDateLong } from '@/lib/dates';
 import type { MoodId } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -69,8 +71,14 @@ export default function ProfilePage() {
     clearEntries,
     reminderSettings,
     updateReminderSettings,
+    updateTimezone,
   } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const [timezoneDraft, setTimezoneDraft] = useState(user?.timezone ?? 'UTC');
+
+  useEffect(() => {
+    setTimezoneDraft(user?.timezone ?? 'UTC');
+  }, [user?.timezone]);
 
   const initials = (user?.full_name ?? '?')
       .split(' ')
@@ -223,6 +231,41 @@ export default function ProfilePage() {
                   </Select>
                 </div>
             )}
+
+            <Separator />
+
+            <div className="flex flex-col gap-3 rounded-xl p-3 hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+                  <Globe2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Timezone</p>
+                  <p className="text-xs text-muted-foreground">
+                    IANA timezone used for reminders and mood dates
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 sm:w-72">
+                <Input
+                  value={timezoneDraft}
+                  onChange={(event) => setTimezoneDraft(event.target.value)}
+                  placeholder="Asia/Tehran"
+                  aria-label="IANA timezone"
+                />
+                <Button
+                  size="sm"
+                  disabled={!timezoneDraft || timezoneDraft === user?.timezone}
+                  onClick={() => {
+                    void updateTimezone(timezoneDraft)
+                      .then(() => toast.success('Timezone updated'))
+                      .catch((error) => toast.error(error.message));
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
           </div>
         </Card>
 

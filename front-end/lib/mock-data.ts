@@ -1,12 +1,5 @@
 import type { MoodEntry, MoodId, User } from './types';
 
-export const DEMO_USER: User = {
-  id: 'demo-user',
-  name: 'Alex Rivera',
-  email: 'alex@boltmood.app',
-  joinedAt: '2025-01-12T08:00:00.000Z',
-};
-
 const SEED_TEMPLATE: Array<{ offset: number; mood: MoodId; note: string }> = [
   { offset: 38, mood: 'calm', note: 'Quiet morning walk before work really set the tone.' },
   { offset: 37, mood: 'motivated', note: 'Crushed the project presentation. Team loved it.' },

@@ -89,14 +89,28 @@ function mapMoodStatistics(stats: MoodWireStatistics): MoodStatisticsResponse {
     return stats;
 }
 
-function mapNotification(notification: NotificationWire): AppNotification {
+function notificationLocalDate(iso: string, timezone?: string): string {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone || browserTimezone(),
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(new Date(iso));
+    const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${value.year}-${value.month}-${value.day}`;
+}
+
+function mapNotification(
+    notification: NotificationWire,
+    timezone?: string,
+): AppNotification {
     return {
         id: notification.id,
         kind: notification.category === 'streak_milestone' ? 'streak' :
             notification.category === 'reminder' ? 'reminder' : 'info',
         title: notification.title,
         body: notification.message,
-        date: notification.created_at.slice(0, 10),
+        date: notificationLocalDate(notification.created_at, timezone),
         read: Boolean(notification.read_at),
         createdAt: notification.created_at,
     };
@@ -108,8 +122,9 @@ function mapSessionEntries(entries: MoodWireEntry[] = []): MoodEntry[] {
 
 function mapSessionNotifications(
     notifications: NotificationWire[] = [],
+    timezone?: string,
 ): AppNotification[] {
-    return notifications.map(mapNotification);
+    return notifications.map((notification) => mapNotification(notification, timezone));
 }
 
 function reminderSettingsFromUser(currentUser: User): ReminderSettings {
@@ -118,6 +133,10 @@ function reminderSettingsFromUser(currentUser: User): ReminderSettings {
         enabled: currentUser.daily_reminders_enabled,
         hour: Number.isFinite(hour) ? hour : DEFAULT_REMINDER_SETTINGS.hour,
     };
+}
+
+function browserTimezone(): string {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
 interface AuthContextValue {
@@ -146,6 +165,7 @@ interface AuthContextValue {
     updateReminderSettings: (
         settings: Partial<ReminderSettings>,
     ) => void;
+    updateTimezone: (timezone: string) => Promise<void>;
     getTodayMood: () => Promise<MoodEntry | null>;
     getRecentMoods: (days?: number) => Promise<MoodEntry[]>;
     getMonthMoods: (year: number, month: number) => Promise<MoodEntry[]>;
@@ -205,6 +225,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setReminderSettings(reminderSettingsFromUser(currentUser));
 
             persist(currentUser, currentEntries, currentNotifications);
+
+            const detectedTimezone = browserTimezone();
+            if (
+                (!currentUser.timezone || currentUser.timezone === 'UTC')
+                && currentUser.timezone !== detectedTimezone
+            ) {
+                void api.apiUpdateTimezone(detectedTimezone).then((updatedUser) => {
+                    setUser(updatedUser);
+                    persist(updatedUser, currentEntries, currentNotifications);
+                }).catch((error) => {
+                    console.error('Updating detected timezone failed:', error);
+                });
+            }
         },
         [persist],
     );
@@ -242,7 +275,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 startSession(
                     session.user,
                     mapSessionEntries(session.entries as MoodWireEntry[]),
-                    mapSessionNotifications(session.notifications as NotificationWire[]),
+                    mapSessionNotifications(
+                        session.notifications as NotificationWire[],
+                        session.user.timezone,
+                    ),
                 );
             } catch (error) {
                 if (mounted) {
@@ -274,7 +310,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             startSession(
                 response.user,
                 mapSessionEntries(response.entries as MoodWireEntry[]),
-                mapSessionNotifications(response.notifications as NotificationWire[]),
+                mapSessionNotifications(
+                    response.notifications as NotificationWire[],
+                    response.user.timezone,
+                ),
             );
 
             return response;
@@ -297,7 +336,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             startSession(
                 response.user,
                 mapSessionEntries(response.entries as MoodWireEntry[]),
-                mapSessionNotifications(response.notifications as NotificationWire[]),
+                mapSessionNotifications(
+                    response.notifications as NotificationWire[],
+                    response.user.timezone,
+                ),
             );
 
             return response;
@@ -473,6 +515,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 void api.apiMarkNotificationRead(id).catch((error) => {
                     console.error('Marking notification as read failed:', error);
+                    setNotifications(previousNotifications);
+                    if (user) persist(user, entries, previousNotifications);
                 });
 
                 return nextNotifications;
@@ -494,6 +538,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             void api.apiMarkAllNotificationsRead().catch((error) => {
                 console.error('Marking all notifications as read failed:', error);
+                setNotifications(previousNotifications);
+                if (user) persist(user, entries, previousNotifications);
             });
 
             return nextNotifications;
@@ -501,12 +547,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [user, entries, persist]);
 
     const clearNotifications = useCallback(() => {
+        const previousNotifications = notifications;
         setNotifications([]);
 
         if (user) {
             persist(user, entries, []);
         }
-    }, [user, entries, persist]);
+        void api.apiClearNotifications().catch((error) => {
+            console.error('Clearing notifications failed:', error);
+            setNotifications(previousNotifications);
+            if (user) persist(user, entries, previousNotifications);
+        });
+    }, [user, entries, notifications, persist]);
 
     const updateReminderSettings = useCallback(
         (partialSettings: Partial<ReminderSettings>) => {
@@ -518,15 +570,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 localStorage.setItem(SETTINGS_KEY, JSON.stringify(nextSettings));
 
-                void api.apiUpdateReminderSettings(nextSettings).catch((error) => {
-                    console.error('Updating reminder settings failed:', error);
-                });
+                void api.apiUpdateReminderSettings(nextSettings)
+                    .then((updatedUser) => {
+                        setUser(updatedUser);
+                        persist(updatedUser, entries, notifications);
+                    })
+                    .catch((error) => {
+                        console.error('Updating reminder settings failed:', error);
+                        setReminderSettings(previousSettings);
+                        localStorage.setItem(
+                            SETTINGS_KEY,
+                            JSON.stringify(previousSettings),
+                        );
+                    });
 
                 return nextSettings;
             });
         },
-        [],
+        [entries, notifications, persist],
     );
+
+    const updateTimezone = useCallback(async (timezone: string) => {
+        const updatedUser = await api.apiUpdateTimezone(timezone);
+        setUser(updatedUser);
+        setReminderSettings(reminderSettingsFromUser(updatedUser));
+        persist(updatedUser, entries, notifications);
+    }, [entries, notifications, persist]);
 
     useEffect(() => {
         if (!user) return;
@@ -536,7 +605,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try {
                 const serverNotifications = await api.apiGetNotifications();
                 if (!cancelled) {
-                    const next = mapSessionNotifications(serverNotifications);
+                    const next = mapSessionNotifications(
+                        serverNotifications,
+                        user.timezone,
+                    );
                     setNotifications(next);
                     persist(user, entries, next);
                 }
@@ -547,9 +619,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         void refresh();
         const timer = window.setInterval(refresh, 60_000);
+        const stream = new EventSource(api.notificationStreamUrl(), {
+            withCredentials: true,
+        });
+        stream.addEventListener('notification', () => void refresh());
         return () => {
             cancelled = true;
             window.clearInterval(timer);
+            stream.close();
         };
     }, [user, entries, persist]);
 
@@ -576,6 +653,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             markAllNotificationsRead,
             clearNotifications,
             updateReminderSettings,
+            updateTimezone,
             getTodayMood,
             getRecentMoods,
             getMonthMoods,
@@ -601,6 +679,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             markAllNotificationsRead,
             clearNotifications,
             updateReminderSettings,
+            updateTimezone,
             getTodayMood,
             getRecentMoods,
             getMonthMoods,

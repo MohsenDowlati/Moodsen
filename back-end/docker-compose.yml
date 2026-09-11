@@ -1,3 +1,11 @@
+# Local dev is "hybrid": infrastructure runs in Docker, the API + worker run
+# natively for live reload.
+#
+#   docker compose up -d              -> infra only (db, adminer, zookeeper, kafka, redis)
+#   docker compose --profile apps up  -> full stack in Docker (api + worker too)
+#
+# The api and notification-worker services are gated behind the "apps" profile
+# so they do NOT start by default and cannot clash with the locally-run app.
 services:
   db:
     image: mariadb:11
@@ -58,6 +66,72 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: moodsen-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    container_name: moodsen-api
+    profiles: ["apps"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MARIADB_HOST: db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  notification-worker:
+    build: .
+    container_name: moodsen-notification-worker
+    profiles: ["apps"]
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.notification_worker"]
+    env_file: .env
+    environment:
+      MARIADB_HOST: db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_ENABLED: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      api:
+        condition: service_healthy
 
 volumes:
   mariadb_data:

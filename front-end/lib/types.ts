@@ -73,6 +73,7 @@ export interface User {
   joined_at: string;
   longest_streak: number;
   reminder_time: string;
+  timezone: string;
   updated_at: string;
 }
 

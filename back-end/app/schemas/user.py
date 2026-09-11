@@ -1,6 +1,7 @@
 import re
 from datetime import datetime, time
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -30,6 +31,18 @@ class UserUpdate(BaseModel):
     dark_mode_enabled: bool | None = None
     daily_reminders_enabled: bool | None = None
     reminder_time: time | None = None
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def timezone_must_be_iana(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise ValueError("timezone must be a valid IANA timezone") from error
+        return value
 
 
 class ReminderSettingsUpdate(BaseModel):
@@ -47,6 +60,7 @@ class UserResponse(BaseModel):
     dark_mode_enabled: bool
     daily_reminders_enabled: bool
     reminder_time: time
+    timezone: str
 
     current_streak: int
     longest_streak: int

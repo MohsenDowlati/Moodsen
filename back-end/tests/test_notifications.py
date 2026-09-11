@@ -70,6 +70,62 @@ def test_delete_notification(client, auth_headers, db_session):
     assert client.get("/notifications").json()["total"] == 0
 
 
+def test_clear_all_notifications(client, auth_headers, db_session):
+    user_id = client.get("/me").json()["id"]
+    service = NotificationService()
+    for index in range(3):
+        service.create_notification(
+            db=db_session,
+            recipient_id=user_id,
+            category="system",
+            title=f"Notice {index}",
+            message="Clear me",
+        )
+
+    response = client.delete("/notifications", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json() == {"deleted_count": 3}
+    assert client.get("/notifications").json()["total"] == 0
+
+
+def test_kafka_event_idempotency(db_session):
+    from uuid import uuid4
+
+    from app.models import User
+
+    user = User(
+        email="events@example.com",
+        password_hash="hash",
+        full_name="Event User",
+    )
+    db_session.add(user)
+    db_session.commit()
+    event_id = uuid4()
+    service = NotificationService()
+
+    first = service.create_notification(
+        db_session,
+        user.id,
+        "system",
+        "Once",
+        "Only once",
+        source_event_id=event_id,
+        dedupe_key=f"system:{event_id}",
+    )
+    second = service.create_notification(
+        db_session,
+        user.id,
+        "system",
+        "Once",
+        "Only once",
+        source_event_id=event_id,
+        dedupe_key=f"system:{event_id}",
+    )
+
+    assert first.id == second.id
+    assert db_session.query(Notification).count() == 1
+
+
 def test_cannot_read_another_users_notification(client, db_session):
     first = register_user(client, email="owner@example.com")
     owner_id = first.json()["user"]["id"]

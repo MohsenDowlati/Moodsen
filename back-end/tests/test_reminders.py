@@ -1,28 +1,19 @@
 from datetime import datetime, time
 
-from app.models import User
+from app.models import NotificationOutbox, User
 from app.services.reminder_service import ReminderService
 
 
 def test_send_daily_reminders_for_matching_time(db_session, monkeypatch):
     fixed_now = datetime(2026, 8, 15, 9, 0, 0)
 
-    class FixedDateTime(datetime):
-        @classmethod
-        def utcnow(cls):
-            return fixed_now
-
-        @classmethod
-        def combine(cls, d, t, tzinfo=None):
-            return datetime.combine(d, t, tzinfo)
-
     monkeypatch.setattr(
-        "app.services.reminder_service.datetime",
-        FixedDateTime,
+        "app.services.reminder_service.local_now",
+        lambda _timezone=None: fixed_now,
     )
     monkeypatch.setattr(
-        "app.services.reminder_service.date",
-        fixed_now.date().__class__,
+        "app.services.reminder_service.local_today",
+        lambda _timezone=None: fixed_now.date(),
     )
 
     user = User(
@@ -38,6 +29,7 @@ def test_send_daily_reminders_for_matching_time(db_session, monkeypatch):
     service = ReminderService()
     created = service.send_daily_reminders(db_session)
     assert created == 1
+    assert db_session.query(NotificationOutbox).count() == 1
 
     # Idempotent for the same day/category
     created_again = service.send_daily_reminders(db_session)
@@ -50,14 +42,13 @@ def test_skip_reminder_when_mood_already_logged(
 ):
     fixed_now = datetime(2026, 8, 15, 9, 0, 0)
 
-    class FixedDateTime(datetime):
-        @classmethod
-        def utcnow(cls):
-            return fixed_now
-
     monkeypatch.setattr(
-        "app.services.reminder_service.datetime",
-        FixedDateTime,
+        "app.services.reminder_service.local_now",
+        lambda _timezone=None: fixed_now,
+    )
+    monkeypatch.setattr(
+        "app.services.reminder_service.local_today",
+        lambda _timezone=None: fixed_now.date(),
     )
 
     user = User(
@@ -84,3 +75,4 @@ def test_skip_reminder_when_mood_already_logged(
 
     created = ReminderService().send_daily_reminders(db_session)
     assert created == 0
+    assert db_session.query(NotificationOutbox).count() == 0

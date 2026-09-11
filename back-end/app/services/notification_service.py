@@ -1,10 +1,18 @@
 from datetime import datetime
 from math import ceil
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
-from app.models import Notification, User
+from app.models import Notification, NotificationOutbox, User
+from app.services.notification_outbox_service import NotificationOutboxService
+from app.services.redis_service import (
+    cache_get,
+    cache_set,
+    invalidate_notifications,
+    notification_cache_version,
+)
 
 
 class NotificationService:
@@ -15,17 +23,50 @@ class NotificationService:
         category: str,
         title: str,
         message: str,
+        source_event_id: UUID | None = None,
+        dedupe_key: str | None = None,
     ) -> Notification:
+        if source_event_id is not None:
+            existing = db.query(Notification).filter(
+                Notification.source_event_id == source_event_id
+            ).first()
+            if existing is not None:
+                return existing
+        if dedupe_key:
+            existing = db.query(Notification).filter(
+                Notification.dedupe_key == dedupe_key
+            ).first()
+            if existing is not None:
+                return existing
+
         notification = Notification(
             recipient_id=UUID(str(recipient_id)),
             category=category,
             title=title.strip(),
             message=message.strip(),
+            source_event_id=source_event_id,
+            dedupe_key=dedupe_key,
         )
 
         db.add(notification)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            existing = None
+            if source_event_id is not None:
+                existing = db.query(Notification).filter(
+                    Notification.source_event_id == source_event_id
+                ).first()
+            if existing is None and dedupe_key:
+                existing = db.query(Notification).filter(
+                    Notification.dedupe_key == dedupe_key
+                ).first()
+            if existing is not None:
+                return existing
+            raise
         db.refresh(notification)
+        invalidate_notifications(notification.recipient_id, "created")
 
         return notification
 
@@ -76,6 +117,43 @@ class NotificationService:
 
         return notifications, total, unread_count
 
+    def get_list_response(
+        self,
+        db: Session,
+        user_id: UUID,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        version = notification_cache_version(user_id)
+        cache_key = f"notifications:{user_id}:v{version}:p{page}:s{page_size}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        notifications, total, unread_count = self.get_for_user(
+            db, user_id, page, page_size
+        )
+        result = self.build_list_response(
+            notifications, total, unread_count, page, page_size
+        )
+        serializable = {
+            **result,
+            "items": [
+                {
+                    "id": item.id,
+                    "recipient_id": item.recipient_id,
+                    "category": item.category,
+                    "title": item.title,
+                    "message": item.message,
+                    "read_at": item.read_at,
+                    "created_at": item.created_at,
+                }
+                for item in notifications
+            ],
+        }
+        cache_set(cache_key, serializable)
+        return serializable
+
     def mark_as_read(
         self,
         db: Session,
@@ -85,6 +163,7 @@ class NotificationService:
             notification.read_at = datetime.utcnow()
             db.commit()
             db.refresh(notification)
+            invalidate_notifications(notification.recipient_id, "read")
 
         return notification
 
@@ -106,6 +185,8 @@ class NotificationService:
         )
 
         db.commit()
+        if updated_count:
+            invalidate_notifications(user_id, "read-all")
         return updated_count
 
     def delete_notification(
@@ -113,8 +194,21 @@ class NotificationService:
         db: Session,
         notification: Notification,
     ) -> None:
+        recipient_id = notification.recipient_id
         db.delete(notification)
         db.commit()
+        invalidate_notifications(recipient_id, "deleted")
+
+    def delete_all_for_user(self, db: Session, user_id: UUID) -> int:
+        deleted_count = (
+            db.query(Notification)
+            .filter(Notification.recipient_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        if deleted_count:
+            invalidate_notifications(user_id, "cleared")
+        return deleted_count
 
     def create_system_notification_for_user(
         self,
@@ -122,13 +216,15 @@ class NotificationService:
         recipient_id: UUID,
         title: str,
         message: str,
-    ) -> Notification:
-        return self.create_notification(
+    ) -> NotificationOutbox:
+        event_id = uuid4()
+        return NotificationOutboxService().enqueue(
             db=db,
             recipient_id=recipient_id,
             category="system",
             title=title,
             message=message,
+            dedupe_key=f"system:{recipient_id}:{event_id}",
         )
 
     def create_system_notification_for_all_users(
@@ -139,23 +235,24 @@ class NotificationService:
     ) -> int:
         users = db.query(User.id).all()
 
-        notifications = [
-            Notification(
-                recipient_id=user_id,
-                category="system",
-                title=title.strip(),
-                message=message.strip(),
-            )
-            for (user_id,) in users
-        ]
-
-        if not notifications:
+        if not users:
             return 0
 
-        db.bulk_save_objects(notifications)
+        broadcast_id = uuid4()
+        outbox_service = NotificationOutboxService()
+        for user_id, in users:
+            outbox_service.enqueue(
+                db=db,
+                recipient_id=user_id,
+                category="system",
+                title=title,
+                message=message,
+                dedupe_key=f"broadcast:{broadcast_id}:{user_id}",
+                metadata={"broadcast_id": str(broadcast_id)},
+                commit=False,
+            )
         db.commit()
-
-        return len(notifications)
+        return len(users)
 
     @staticmethod
     def build_list_response(

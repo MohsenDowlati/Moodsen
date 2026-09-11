@@ -15,6 +15,7 @@ from app.schemas.mood import (
     PaginatedMoodEntriesResponse,
 )
 from app.services.mood_service import MoodEntryService
+from app.time_utils import local_today
 
 router = APIRouter()
 mood_entry_service = MoodEntryService()
@@ -31,6 +32,7 @@ def get_today_mood_entry(
     return mood_entry_service.get_today_entry(
         db=db,
         user_id=current_user.id,
+        timezone_name=current_user.timezone,
     )
 
 
@@ -76,6 +78,7 @@ def get_recent_mood_entries(
         db=db,
         user_id=current_user.id,
         days=days,
+        timezone_name=current_user.timezone,
     )
 
 
@@ -109,7 +112,9 @@ def get_all_time_statistics(
         db=db,
         user_id=current_user.id,
     )
-    return mood_entry_service.build_statistics(entries)
+    return mood_entry_service.build_statistics(
+        entries, local_today(current_user.timezone)
+    )
 
 
 @router.get(
@@ -125,8 +130,11 @@ def get_recent_statistics(
         db=db,
         user_id=current_user.id,
         days=days,
+        timezone_name=current_user.timezone,
     )
-    return mood_entry_service.build_statistics(entries)
+    return mood_entry_service.build_statistics(
+        entries, local_today(current_user.timezone)
+    )
 
 
 @router.get(
@@ -145,7 +153,9 @@ def get_month_statistics(
         year=year,
         month=month,
     )
-    return mood_entry_service.build_statistics(entries)
+    return mood_entry_service.build_statistics(
+        entries, local_today(current_user.timezone)
+    )
 
 
 @router.get(

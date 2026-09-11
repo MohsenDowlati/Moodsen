@@ -10,8 +10,6 @@ from app.routers.mood import router as mood_router
 from app.routers.notification import router as notification_router
 from app.routers.user import router as users_router
 from app.routers.leaderboard import router as leaderboard_router
-from app.scheduler import start_scheduler, stop_scheduler
-from app.services.kafka_service import start_leaderboard_consumer
 
 
 def _is_testing() -> bool:
@@ -22,14 +20,7 @@ def _is_testing() -> bool:
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
 
-    if not _is_testing():
-        start_scheduler()
-        start_leaderboard_consumer()
-
     yield
-
-    if not _is_testing():
-        stop_scheduler()
 
 
 app = FastAPI(

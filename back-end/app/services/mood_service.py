@@ -41,13 +41,14 @@ class MoodEntryService:
         self,
         db: Session,
         user_id: UUID,
+        timezone_name: str | None = None,
     ) -> MoodEntry | None:
         """Return the authenticated user's mood entry for today, if present."""
         return (
             db.query(MoodEntry)
             .filter(
                 MoodEntry.user_id == user_id,
-                MoodEntry.entry_date == local_today(),
+                MoodEntry.entry_date == local_today(timezone_name),
             )
             .first()
         )
@@ -93,7 +94,7 @@ class MoodEntryService:
 
             (user_id, entry_date)
         """
-        today = local_today()
+        today = local_today(user.timezone)
 
         entry = (
             db.query(MoodEntry)
@@ -121,7 +122,7 @@ class MoodEntryService:
             entry.note = normalized_note
 
         try:
-            db.commit()
+            db.flush()
         except IntegrityError:
             # Two tabs can submit today's mood concurrently. The unique
             # constraint is the source of truth; reload the winning row and
@@ -140,10 +141,10 @@ class MoodEntryService:
             entry.mood = payload.mood
             entry.note = normalized_note
             created = False
-            db.commit()
-        db.refresh(entry)
+            db.flush()
 
         self.update_user_streaks(db, user)
+        db.refresh(entry)
 
         return entry, created
 
@@ -169,11 +170,9 @@ class MoodEntryService:
 
             setattr(entry, field_name, value)
 
-        db.commit()
-        db.refresh(entry)
-
-        # Needed particularly if entry_date is allowed to change in UserUpdate.
+        db.flush()
         self.update_user_streaks(db, user)
+        db.refresh(entry)
 
         return entry
 
@@ -189,9 +188,7 @@ class MoodEntryService:
         Call this only after getting the entry via `get_by_id_for_user`.
         """
         db.delete(entry)
-        db.commit()
-
-        # A deletion can break a current or historical streak.
+        db.flush()
         self.update_user_streaks(db, user)
 
     def get_recent_entries(
@@ -199,6 +196,7 @@ class MoodEntryService:
         db: Session,
         user_id: UUID,
         days: int,
+        timezone_name: str | None = None,
     ) -> list[MoodEntry]:
         """
         Return entries from the last `days` calendar days, inclusive of today.
@@ -210,7 +208,7 @@ class MoodEntryService:
         if days < 1:
             raise ValueError("Days must be at least 1")
 
-        end_date = local_today()
+        end_date = local_today(timezone_name)
         start_date = end_date - timedelta(days=days - 1)
 
         return (
@@ -333,6 +331,7 @@ class MoodEntryService:
     def calculate_current_streak(
         self,
         entries: list[MoodEntry],
+        current_day: date | None = None,
     ) -> int:
         """
         Calculate the active consecutive-day streak.
@@ -348,7 +347,7 @@ class MoodEntryService:
         """
         entry_dates = {entry.entry_date for entry in entries}
 
-        current_day = local_today()
+        current_day = current_day or local_today()
 
         if current_day not in entry_dates:
             current_day -= timedelta(days=1)
@@ -405,8 +404,37 @@ class MoodEntryService:
         """
         entries = self.get_all_entries(db, user.id)
 
-        user.current_streak = self.calculate_current_streak(entries)
+        today = local_today(user.timezone)
+        user.current_streak = self.calculate_current_streak(entries, today)
         user.longest_streak = self.calculate_longest_streak(entries)
+
+        from app.services.reminder_service import STREAK_MILESTONE_DAYS
+        from app.services.notification_outbox_service import NotificationOutboxService
+
+        if (
+            STREAK_MILESTONE_DAYS > 0
+            and user.current_streak >= STREAK_MILESTONE_DAYS
+            and user.current_streak % STREAK_MILESTONE_DAYS == 0
+            and any(entry.entry_date == today for entry in entries)
+        ):
+            NotificationOutboxService().enqueue(
+                db=db,
+                recipient_id=user.id,
+                category="streak_milestone",
+                title="Congratulations!",
+                message=(
+                    f"You have reached a {user.current_streak}-day mood streak!"
+                ),
+                dedupe_key=(
+                    f"streak:{user.id}:{user.current_streak}:{today.isoformat()}"
+                ),
+                metadata={
+                    "streak_days": user.current_streak,
+                    "local_date": today.isoformat(),
+                    "timezone": user.timezone,
+                },
+                commit=False,
+            )
 
         db.commit()
         db.refresh(user)
@@ -532,6 +560,7 @@ class MoodEntryService:
     def build_statistics(
         self,
         entries: list[MoodEntry],
+        current_day: date | None = None,
     ) -> dict:
         """
         Build a reusable analytics result for any entry range:
@@ -539,7 +568,7 @@ class MoodEntryService:
         """
         return {
             "total_entries": len(entries),
-            "current_streak": self.calculate_current_streak(entries),
+            "current_streak": self.calculate_current_streak(entries, current_day),
             "longest_streak": self.calculate_longest_streak(entries),
             "most_common_mood": self.most_common_mood(entries),
             "average_mood_score": self.calculate_average_mood_score(entries),

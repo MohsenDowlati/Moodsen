@@ -33,6 +33,7 @@ function timeAgo(iso: string): string {
 export function NotificationBell() {
   const {
     notifications,
+    user,
     unreadNotificationCount,
     markNotificationRead,
     markAllNotificationsRead,
@@ -45,13 +46,22 @@ export function NotificationBell() {
     const today: AppNotification[] = [];
     const earlier: AppNotification[] = [];
     for (const n of notifications) {
-      const isToday =
-        n.date === new Date().toISOString().slice(0, 10);
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: user?.timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const values = Object.fromEntries(
+        parts.map((part) => [part.type, part.value]),
+      );
+      const localToday = `${values.year}-${values.month}-${values.day}`;
+      const isToday = n.date === localToday;
       if (isToday) today.push(n);
       else earlier.push(n);
     }
     return { today, earlier };
-  }, [notifications]);
+  }, [notifications, user?.timezone]);
 
   return (
     <Popover>

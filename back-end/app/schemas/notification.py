@@ -19,6 +19,10 @@ class DeleteNotificationResponse(BaseModel):
     message: str
 
 
+class DeleteAllNotificationsResponse(BaseModel):
+    deleted_count: int
+
+
 class NotificationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -107,7 +107,9 @@ def get_my_profile(
     from app.services.mood_service import MoodEntryService
     from app.services.notification_service import NotificationService
 
-    moods = MoodEntryService().get_recent_entries(db, current_user.id, 30)
+    moods = MoodEntryService().get_recent_entries(
+        db, current_user.id, 30, current_user.timezone
+    )
     notifications, _, _ = NotificationService().get_for_user(
         db, current_user.id, page=1, page_size=100
     )
@@ -119,6 +121,7 @@ def get_my_profile(
         "dark_mode_enabled": current_user.dark_mode_enabled,
         "daily_reminders_enabled": current_user.daily_reminders_enabled,
         "reminder_time": current_user.reminder_time,
+        "timezone": current_user.timezone,
         "current_streak": current_user.current_streak,
         "longest_streak": current_user.longest_streak,
         "joined_at": current_user.joined_at,

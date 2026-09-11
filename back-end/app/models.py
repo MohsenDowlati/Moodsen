@@ -1,4 +1,5 @@
 import uuid
+import os
 from datetime import date, datetime, time
 
 from sqlalchemy import (
@@ -9,6 +10,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     Time,
@@ -47,6 +49,7 @@ class User(Base):
     dark_mode_enabled = Column(Boolean, default=False)
     daily_reminders_enabled = Column(Boolean, default=True)
     reminder_time = Column(Time, default=time(9, 0))
+    timezone = Column(String(64), nullable=False, default=lambda: os.getenv("APP_TIMEZONE", "UTC"))
 
     current_streak = Column(Integer, default=0)
     longest_streak = Column(Integer, default=0)
@@ -138,6 +141,8 @@ class Notification(Base):
     )
     title = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
+    source_event_id = Column(Uuid, nullable=True, unique=True)
+    dedupe_key = Column(String(255), nullable=True, unique=True)
     read_at = Column(DateTime, nullable=True, default=None)
     created_at = Column(
         DateTime,
@@ -149,3 +154,18 @@ class Notification(Base):
         "User",
         back_populates="notifications",
     )
+
+
+class NotificationOutbox(Base):
+    __tablename__ = "notification_outbox"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    topic = Column(String(255), nullable=False)
+    event_key = Column(String(255), nullable=False)
+    dedupe_key = Column(String(255), nullable=False, unique=True)
+    payload = Column(JSON, nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    published_at = Column(DateTime, nullable=True, index=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

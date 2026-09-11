@@ -1,7 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+import asyncio
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,11 +13,13 @@ from app.dependencies.auth import get_current_user
 from app.models import User
 from app.schemas.notification import (
     DeleteNotificationResponse,
+    DeleteAllNotificationsResponse,
     MarkAllReadResponse,
     NotificationListResponse,
     NotificationResponse,
 )
 from app.services.notification_service import NotificationService
+from app.services.redis_service import notification_pubsub
 
 router = APIRouter()
 notification_service = NotificationService()
@@ -29,19 +35,55 @@ def get_my_notifications(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ):
-    notifications, total, unread_count = notification_service.get_for_user(
+    return notification_service.get_list_response(
         db=db,
         user_id=current_user.id,
         page=page,
         page_size=page_size,
     )
 
-    return notification_service.build_list_response(
-        notifications=notifications,
-        total=total,
-        unread_count=unread_count,
-        page=page,
-        page_size=page_size,
+
+@router.get("/stream")
+async def stream_my_notifications(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    async def events():
+        client = None
+        pubsub = None
+        try:
+            client, pubsub = await notification_pubsub(current_user.id)
+            yield "event: connected\ndata: {}\n\n"
+            while not await request.is_disconnected():
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=15.0,
+                )
+                if message is None:
+                    yield ": heartbeat\n\n"
+                    continue
+                payload = message.get("data", "{}")
+                try:
+                    parsed = json.loads(payload)
+                    event_name = parsed.get("event", "changed")
+                except (TypeError, json.JSONDecodeError):
+                    event_name = "changed"
+                yield f"event: notification\ndata: {json.dumps({'event': event_name})}\n\n"
+                await asyncio.sleep(0)
+        finally:
+            if pubsub is not None:
+                await pubsub.unsubscribe(f"notifications:{current_user.id}")
+                await pubsub.aclose()
+            if client is not None:
+                await client.aclose()
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -85,6 +127,21 @@ def mark_my_notification_as_read(
         db=db,
         notification=notification,
     )
+
+
+@router.delete(
+    "",
+    response_model=DeleteAllNotificationsResponse,
+)
+def delete_all_my_notifications(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    return {
+        "deleted_count": notification_service.delete_all_for_user(
+            db, current_user.id
+        )
+    }
 
 
 @router.delete(

@@ -10,5 +10,7 @@ pyjwt
 pwdlib[argon2]
 apscheduler
 kafka-python
+redis
+alembic
 pytest
 httpx
