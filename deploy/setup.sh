@@ -339,37 +339,13 @@ systemctl enable --now moodsen-api moodsen-worker moodsen-web
 
 # ===========================================================================
 log "Configuring Nginx reverse proxy ..."
-cat > /etc/nginx/sites-available/moodsen <<EOF
-server {
-    listen 80;
-    server_name ${PUBLIC_HOST};
-
-    client_max_body_size 10m;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Connection "";
-        proxy_buffering off;
-        proxy_cache off;
-        chunked_transfer_encoding off;
-        proxy_read_timeout 86400s;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
+# Install the maintained reverse-proxy config and point it at this host. Using
+# the committed file keeps the SSE / upgrade / redirect settings in one place
+# instead of duplicating (and drifting from) them here.
+install -m 644 "${SCRIPT_DIR}/moodsen-nginx.conf" /etc/nginx/sites-available/moodsen
+# Anchor to the real directive (leading whitespace) so the commented
+# "server_name _;" example is left untouched.
+sed -i -E "s|^([[:space:]]*)server_name .*;|\1server_name ${PUBLIC_HOST};|" /etc/nginx/sites-available/moodsen
 
 ln -sfn /etc/nginx/sites-available/moodsen /etc/nginx/sites-enabled/moodsen
 rm -f /etc/nginx/sites-enabled/default
