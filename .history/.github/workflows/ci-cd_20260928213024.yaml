@@ -1,0 +1,75 @@
+name: Moodsen DevSecOps CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+    DOCKER_REGISTRY: ghcr.io
+    BACKEND_IMAGE: ghcr.io/${{ github.repository }}/moodsen-backend
+    FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/moodsen-frontend
+
+jobs:
+    lint-backend:
+    name: Backend Lint (FastAPI)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./back-end 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Lint Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy
+
+      - name: Run Ruff (Linter & Format Check)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Run Type Checking (Mypy)
+        run: |
+          mypy .
+  lint-frontend:
+    name: Frontend Lint (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend # مسیر پوشه فرانت‌اند را متناسب با ساختار ریپو تغییر دهید
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm" # در صورت استفاده از pnpm یا yarn تغییر دهید
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Next.js ESLint
+        run: npm run lint
+
+      - name: Run TypeScript Check
+        # مطمئن شوید در صورت وجود ارور تایپ، بیلد متوقف شود
+        run: npx tsc --noEmit
