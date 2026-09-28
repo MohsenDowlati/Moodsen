@@ -1,0 +1,8 @@
+compact:
+  - CKV_AWS_39 
+  - CKV_AWS_58 
+soft-fail: false
+framework:
+  - terraform
+directory:
+  - terraform
